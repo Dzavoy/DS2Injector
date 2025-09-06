@@ -8,6 +8,7 @@ use winapi::um::tlhelp32::{
     CreateToolhelp32Snapshot, Module32FirstW, Module32NextW, MODULEENTRY32W, TH32CS_SNAPMODULE,
 };
 use winapi::um::winnt::{HANDLE, PROCESS_ALL_ACCESS};
+use sysinfo::{PidExt, ProcessExt, System, SystemExt};
 
 pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
     Some(0x48),
@@ -170,6 +171,41 @@ impl MemoryPointer {
         })
     }
 
+    pub fn pointer_walk(&self, offsets: &[isize]) -> Result<Self, MemError> {
+        if offsets.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let mut current = self.offset(offsets[0])?;
+
+        for &offset in &offsets[1..] {
+            let next_addr = current.read_u64()? as usize;
+            current = MemoryPointer {
+                handle: self.handle,
+                address: next_addr,
+                module_base: self.module_base,
+                module_size: self.module_size,
+                module_name: self.module_name.clone(),
+            }.offset(offset)?;
+        }
+
+        Ok(current)
+    }
+
+    pub fn find_process(name: &str) -> Result<u32, MemError> {
+        let mut sys: System = System::new_all();
+        sys.refresh_all();
+
+        let pid: u32 = sys
+            .processes()
+            .iter()
+            .find(|(_, p)| p.name().to_lowercase() == name.to_lowercase())
+            .map(|(pid, _)| pid.as_u32())
+            .ok_or_else(|| MemError::WinApi("Process not found".into()))?;
+
+        Ok(pid)
+    }
+
     pub fn read_f32(&self) -> Result<f32, MemError> {
         let mut buf: f32 = 0.0;
         let res = unsafe {
@@ -233,6 +269,27 @@ impl MemoryPointer {
         }
 
         Ok(buf)
+    }
+
+    pub fn write_i32(&self, value: i32) -> Result<(), MemError> {
+        let res = unsafe {
+            WriteProcessMemory(
+                self.handle,
+                self.address as *mut winapi::ctypes::c_void,
+                &value as *const i32 as *const winapi::ctypes::c_void,
+                std::mem::size_of::<i32>(),
+                null_mut(),
+            )
+        };
+
+        if res == 0 {
+            return Err(MemError::WinApi(format!(
+                "WriteProcessMemory failed at {:#X}",
+                self.address
+            )));
+        }
+
+        Ok(())
     }
 
     pub fn read_u64(&self) -> Result<u64, MemError> {
