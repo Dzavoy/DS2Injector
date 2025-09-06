@@ -1,11 +1,12 @@
 [package]
-name = "DS2Injector"
+name = "ds2_injector"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 winapi = { version = "0.3", features = ["winnt", "winbase", "memoryapi", "processthreadsapi", "tlhelp32", "handleapi"] }
 sysinfo = "0.27.7"
+lazy_static = "1.4.0"
 
 [lib]
 path = "src/lib.rs"
