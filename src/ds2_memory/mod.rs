@@ -1,6 +1,6 @@
-use crate::memory_pointer::{MemoryPointer, MemError, GAME_MANAGER_IMP};
+use crate::memory_pointer::{MemoryPointer, MemError};
 mod addresses;
-use addresses::get_address_path;
+use addresses::{get_address_path, GAME_MANAGER_IMP};
 
 pub struct Stats {
     base: MemoryPointer,
