@@ -4,7 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-winapi = { version = "0.3.9", features = ["winnt", "winbase", "memoryapi", "processthreadsapi", "tlhelp32", "handleapi"] }
+windows-sys = { version = "0.61.0", features = [
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+    "Win32_Foundation",
+] }
 sysinfo = "0.37.0"
 lazy_static = "1.5.0"
 
