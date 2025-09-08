@@ -1,69 +1,28 @@
 use std::ptr::null_mut;
-use winapi::shared::minwindef::FALSE;
-use winapi::shared::ntdef::NULL;
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::memoryapi::{ReadProcessMemory, WriteProcessMemory};
-use winapi::um::processthreadsapi::OpenProcess;
-use winapi::um::tlhelp32::{
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Module32FirstW, Module32NextW, MODULEENTRY32W, TH32CS_SNAPMODULE,
 };
-use winapi::um::winnt::{HANDLE, PROCESS_ALL_ACCESS};
+use windows_sys::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory};
+use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_ALL_ACCESS};
 
 use sysinfo::System;
 
 pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
-    Some(0x48),
-    Some(0x8B),
-    Some(0x05),
-    None,
-    None,
-    None,
-    None,
-    Some(0x48),
-    Some(0x8B),
-    Some(0x58),
-    Some(0x38),
-    Some(0x48),
-    Some(0x85),
-    Some(0xDB),
-    Some(0x74),
-    None,
-    Some(0xF6),
+    Some(0x48), Some(0x8B), Some(0x05), None, None, None, None, Some(0x48),
+    Some(0x8B), Some(0x58), Some(0x38), Some(0x48), Some(0x85), Some(0xDB),
+    Some(0x74), None, Some(0xF6),
 ];
 
 pub const NET_SEASON_MANAGER: [Option<u8>; 17] = [
-    Some(0x48),
-    Some(0x8B),
-    Some(0x0D),
-    None,
-    None,
-    None,
-    None,
-    Some(0x48),
-    Some(0x85),
-    Some(0xC9),
-    Some(0x74),
-    None,
-    Some(0x48),
-    Some(0x8B),
-    Some(0x49),
-    Some(0x18),
-    Some(0xE8),
+    Some(0x48), Some(0x8B), Some(0x0D), None, None, None, None, Some(0x48),
+    Some(0x85), Some(0xC9), Some(0x74), None, Some(0x48), Some(0x8B),
+    Some(0x49), Some(0x18), Some(0xE8),
 ];
 
 pub const KATANA_MAIN_APP: [Option<u8>; 12] = [
-    Some(0x48),
-    Some(0x8B),
-    Some(0x15),
-    None,
-    None,
-    None,
-    None,
-    Some(0x45),
-    Some(0x32),
-    Some(0xC0),
-    Some(0x85),
-    Some(0xC9),
+    Some(0x48), Some(0x8B), Some(0x15), None, None, None, None, Some(0x45),
+    Some(0x32), Some(0xC0), Some(0x85), Some(0xC9),
 ];
 
 #[derive(Debug, Clone)]
@@ -85,13 +44,13 @@ pub struct MemoryPointer {
 impl MemoryPointer {
     pub fn from_pid(pid: u32, module_name: &str) -> Result<Self, MemError> {
         unsafe {
-            let handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-            if handle.is_null() {
+            let handle = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
+            if handle == 0 as HANDLE {
                 return Err(MemError::WinApi("OpenProcess failed".into()));
             }
 
             let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, pid);
-            if snapshot == NULL {
+            if snapshot == 0 as HANDLE{
                 CloseHandle(handle);
                 return Err(MemError::WinApi("CreateToolhelp32Snapshot failed".into()));
             }
@@ -103,7 +62,7 @@ impl MemoryPointer {
             let mut module_size = 0u32;
             let mut module_name_found = String::new();
 
-            if Module32FirstW(snapshot, &mut me32) != FALSE {
+            if Module32FirstW(snapshot, &mut me32) != 0 {
                 loop {
                     let name = String::from_utf16_lossy(
                         &me32.szModule
@@ -113,14 +72,14 @@ impl MemoryPointer {
                             .collect::<Vec<u16>>(),
                     );
 
-                    if name.to_lowercase() == module_name.to_lowercase() {
+                    if name.eq_ignore_ascii_case(module_name) {
                         module_base = me32.modBaseAddr as usize;
                         module_size = me32.modBaseSize;
                         module_name_found = name;
                         break;
                     }
 
-                    if Module32NextW(snapshot, &mut me32) == FALSE {
+                    if Module32NextW(snapshot, &mut me32) == 0 {
                         break;
                     }
                 }
@@ -143,13 +102,9 @@ impl MemoryPointer {
 
     pub fn offset(&self, off: isize) -> Result<Self, MemError> {
         let new_address = if off >= 0 {
-            self.address
-                .checked_add(off as usize)
-                .ok_or(MemError::NullPointer)?
+            self.address.checked_add(off as usize).ok_or(MemError::NullPointer)?
         } else {
-            self.address
-                .checked_sub((-off) as usize)
-                .ok_or(MemError::NullPointer)?
+            self.address.checked_sub((-off) as usize).ok_or(MemError::NullPointer)?
         };
 
         Ok(Self {
@@ -178,7 +133,6 @@ impl MemoryPointer {
         }
 
         let mut current = self.offset(offsets[0])?;
-
         for &offset in &offsets[1..] {
             let next_addr = current.read_u64()? as usize;
             current = MemoryPointer {
@@ -187,9 +141,9 @@ impl MemoryPointer {
                 module_base: self.module_base,
                 module_size: self.module_size,
                 module_name: self.module_name.clone(),
-            }.offset(offset)?;
+            }
+            .offset(offset)?;
         }
-
         Ok(current)
     }
 
@@ -197,14 +151,11 @@ impl MemoryPointer {
         let mut sys = System::new_all();
         sys.refresh_all();
 
-        let pid: u32 = sys
-            .processes()
+        sys.processes()
             .iter()
             .find(|(_, p)| p.name().eq_ignore_ascii_case(name))
             .map(|(pid, _)| pid.as_u32())
-            .ok_or_else(|| MemError::WinApi("Process not found".into()))?;
-
-        Ok(pid)
+            .ok_or_else(|| MemError::WinApi("Process not found".into()))
     }
 
     pub fn read_f32(&self) -> Result<f32, MemError> {
@@ -212,20 +163,15 @@ impl MemoryPointer {
         let res = unsafe {
             ReadProcessMemory(
                 self.handle,
-                self.address as *const winapi::ctypes::c_void,
-                &mut buf as *mut f32 as *mut winapi::ctypes::c_void,
+                self.address as *const _,
+                &mut buf as *mut _ as *mut _,
                 std::mem::size_of::<f32>(),
                 null_mut(),
             )
         };
-
         if res == 0 {
-            return Err(MemError::WinApi(format!(
-                "ReadProcessMemory failed at {:#X}",
-                self.address
-            )));
+            return Err(MemError::WinApi(format!("ReadProcessMemory failed at {:#X}", self.address)));
         }
-
         Ok(buf)
     }
 
@@ -233,20 +179,15 @@ impl MemoryPointer {
         let res = unsafe {
             WriteProcessMemory(
                 self.handle,
-                self.address as *mut winapi::ctypes::c_void,
-                &value as *const f32 as *const winapi::ctypes::c_void,
+                self.address as *mut _,
+                &value as *const _ as *const _,
                 std::mem::size_of::<f32>(),
                 null_mut(),
             )
         };
-
         if res == 0 {
-            return Err(MemError::WinApi(format!(
-                "WriteProcessMemory failed at {:#X}",
-                self.address
-            )));
+            return Err(MemError::WinApi(format!("WriteProcessMemory failed at {:#X}", self.address)));
         }
-
         Ok(())
     }
 
@@ -255,20 +196,15 @@ impl MemoryPointer {
         let res = unsafe {
             ReadProcessMemory(
                 self.handle,
-                self.address as *const winapi::ctypes::c_void,
-                &mut buf as *mut i32 as *mut winapi::ctypes::c_void,
+                self.address as *const _,
+                &mut buf as *mut _ as *mut _,
                 std::mem::size_of::<i32>(),
                 null_mut(),
             )
         };
-
         if res == 0 {
-            return Err(MemError::WinApi(format!(
-                "ReadProcessMemory failed at {:#X}",
-                self.address
-            )));
+            return Err(MemError::WinApi(format!("ReadProcessMemory failed at {:#X}", self.address)));
         }
-
         Ok(buf)
     }
 
@@ -276,20 +212,15 @@ impl MemoryPointer {
         let res = unsafe {
             WriteProcessMemory(
                 self.handle,
-                self.address as *mut winapi::ctypes::c_void,
-                &value as *const i32 as *const winapi::ctypes::c_void,
+                self.address as *mut _,
+                &value as *const _ as *const _,
                 std::mem::size_of::<i32>(),
                 null_mut(),
             )
         };
-
         if res == 0 {
-            return Err(MemError::WinApi(format!(
-                "WriteProcessMemory failed at {:#X}",
-                self.address
-            )));
+            return Err(MemError::WinApi(format!("WriteProcessMemory failed at {:#X}", self.address)));
         }
-
         Ok(())
     }
 
@@ -298,20 +229,15 @@ impl MemoryPointer {
         let res = unsafe {
             ReadProcessMemory(
                 self.handle,
-                self.address as *const winapi::ctypes::c_void,
-                &mut buf as *mut u64 as *mut winapi::ctypes::c_void,
+                self.address as *const _,
+                &mut buf as *mut _ as *mut _,
                 std::mem::size_of::<u64>(),
                 null_mut(),
             )
         };
-
         if res == 0 {
-            return Err(MemError::WinApi(format!(
-                "ReadProcessMemory failed at {:#X}",
-                self.address
-            )));
+            return Err(MemError::WinApi(format!("ReadProcessMemory failed at {:#X}", self.address)));
         }
-
         Ok(buf)
     }
 
@@ -320,20 +246,15 @@ impl MemoryPointer {
         let res = unsafe {
             ReadProcessMemory(
                 self.handle,
-                self.address as *const winapi::ctypes::c_void,
-                buffer.as_mut_ptr() as *mut winapi::ctypes::c_void,
+                self.address as *const _,
+                buffer.as_mut_ptr() as *mut _,
                 size,
                 null_mut(),
             )
         };
-
         if res == 0 {
-            return Err(MemError::WinApi(format!(
-                "ReadProcessMemory failed at {:#X}",
-                self.address
-            )));
+            return Err(MemError::WinApi(format!("ReadProcessMemory failed at {:#X}", self.address)));
         }
-
         Ok(buffer)
     }
 
@@ -342,20 +263,18 @@ impl MemoryPointer {
         let res = unsafe {
             ReadProcessMemory(
                 self.handle,
-                self.module_base as *const winapi::ctypes::c_void,
-                buffer.as_mut_ptr() as *mut winapi::ctypes::c_void,
+                self.module_base as *const _,
+                buffer.as_mut_ptr() as *mut _,
                 self.module_size as usize,
                 null_mut(),
             )
         };
-
         if res == 0 {
             return Err(MemError::WinApi("Failed to read module memory".into()));
         }
 
         for i in 0..buffer.len() - pattern.len() {
             let mut found = true;
-
             for j in 0..pattern.len() {
                 if let Some(byte) = pattern[j] {
                     if buffer[i + j] != byte {
@@ -364,7 +283,6 @@ impl MemoryPointer {
                     }
                 }
             }
-
             if found {
                 return Ok(Self {
                     handle: self.handle,
@@ -375,7 +293,6 @@ impl MemoryPointer {
                 });
             }
         }
-
         Err(MemError::PatternNotFound("Pattern not found".into()))
     }
 }
