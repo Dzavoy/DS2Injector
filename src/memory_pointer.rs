@@ -8,7 +8,8 @@ use winapi::um::tlhelp32::{
     CreateToolhelp32Snapshot, Module32FirstW, Module32NextW, MODULEENTRY32W, TH32CS_SNAPMODULE,
 };
 use winapi::um::winnt::{HANDLE, PROCESS_ALL_ACCESS};
-use sysinfo::{PidExt, ProcessExt, System, SystemExt};
+
+use sysinfo::System;
 
 pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
     Some(0x48),
@@ -193,13 +194,13 @@ impl MemoryPointer {
     }
 
     pub fn find_process(name: &str) -> Result<u32, MemError> {
-        let mut sys: System = System::new_all();
+        let mut sys = System::new_all();
         sys.refresh_all();
 
         let pid: u32 = sys
             .processes()
             .iter()
-            .find(|(_, p)| p.name().to_lowercase() == name.to_lowercase())
+            .find(|(_, p)| p.name().eq_ignore_ascii_case(name))
             .map(|(pid, _)| pid.as_u32())
             .ok_or_else(|| MemError::WinApi("Process not found".into()))?;
 
