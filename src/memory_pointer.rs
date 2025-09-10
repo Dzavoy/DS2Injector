@@ -27,12 +27,12 @@ pub struct MemoryPointer {
 impl MemoryPointer {
     pub fn from_pid(pid: u32, module_name: &str) -> Result<Self, MemError> {
         unsafe {
-            let handle = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
+            let handle: *mut std::ffi::c_void = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
             if handle == 0 as HANDLE {
                 return Err(MemError::WinApi("OpenProcess failed".into()));
             }
 
-            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, pid);
+            let snapshot: *mut std::ffi::c_void = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, pid);
             if snapshot == 0 as HANDLE{
                 CloseHandle(handle);
                 return Err(MemError::WinApi("CreateToolhelp32Snapshot failed".into()));
@@ -41,13 +41,13 @@ impl MemoryPointer {
             let mut me32: MODULEENTRY32W = std::mem::zeroed();
             me32.dwSize = std::mem::size_of::<MODULEENTRY32W>() as u32;
 
-            let mut module_base = 0usize;
-            let mut module_size = 0u32;
-            let mut module_name_found = String::new();
+            let mut module_base: usize = 0usize;
+            let mut module_size: u32 = 0u32;
+            let mut module_name_found: String = String::new();
 
             if Module32FirstW(snapshot, &mut me32) != 0 {
                 loop {
-                    let name = String::from_utf16_lossy(
+                    let name: String = String::from_utf16_lossy(
                         &me32.szModule
                             .iter()
                             .take_while(|&&c| c != 0)
@@ -84,7 +84,7 @@ impl MemoryPointer {
     }
 
     pub fn offset(&self, off: isize) -> Result<Self, MemError> {
-        let new_address = if off >= 0 {
+        let new_address: usize = if off >= 0 {
             self.address.checked_add(off as usize).ok_or(MemError::NullPointer)?
         } else {
             self.address.checked_sub((-off) as usize).ok_or(MemError::NullPointer)?
@@ -115,9 +115,9 @@ impl MemoryPointer {
             return Ok(self.clone());
         }
 
-        let mut current = self.offset(offsets[0])?;
+        let mut current: MemoryPointer = self.offset(offsets[0])?;
         for &offset in &offsets[1..] {
-            let next_addr = current.read_u64()? as usize;
+            let next_addr: usize = current.read_u64()? as usize;
             current = MemoryPointer {
                 handle: self.handle,
                 address: next_addr,
@@ -131,7 +131,7 @@ impl MemoryPointer {
     }
 
     pub fn find_process(name: &str) -> Result<u32, MemError> {
-        let mut sys = System::new_all();
+        let mut sys: System = System::new_all();
         sys.refresh_all();
 
         sys.processes()
@@ -143,7 +143,7 @@ impl MemoryPointer {
 
     pub fn read_f32(&self) -> Result<f32, MemError> {
         let mut buf: f32 = 0.0;
-        let res = unsafe {
+        let res: i32 = unsafe {
             ReadProcessMemory(
                 self.handle,
                 self.address as *const _,
@@ -159,7 +159,7 @@ impl MemoryPointer {
     }
 
     pub fn write_f32(&self, value: f32) -> Result<(), MemError> {
-        let res = unsafe {
+        let res: i32 = unsafe {
             WriteProcessMemory(
                 self.handle,
                 self.address as *mut _,
@@ -176,7 +176,7 @@ impl MemoryPointer {
 
     pub fn read_i32(&self) -> Result<i32, MemError> {
         let mut buf: i32 = 0;
-        let res = unsafe {
+        let res: i32 = unsafe {
             ReadProcessMemory(
                 self.handle,
                 self.address as *const _,
@@ -192,7 +192,7 @@ impl MemoryPointer {
     }
 
     pub fn write_i32(&self, value: i32) -> Result<(), MemError> {
-        let res = unsafe {
+        let res: i32 = unsafe {
             WriteProcessMemory(
                 self.handle,
                 self.address as *mut _,
@@ -209,7 +209,7 @@ impl MemoryPointer {
 
     pub fn read_u64(&self) -> Result<u64, MemError> {
         let mut buf: u64 = 0;
-        let res = unsafe {
+        let res: i32 = unsafe {
             ReadProcessMemory(
                 self.handle,
                 self.address as *const _,
@@ -225,8 +225,8 @@ impl MemoryPointer {
     }
 
     pub fn read_bytes(&self, size: usize) -> Result<Vec<u8>, MemError> {
-        let mut buffer = vec![0u8; size];
-        let res = unsafe {
+        let mut buffer: Vec<u8> = vec![0u8; size];
+        let res: i32 = unsafe {
             ReadProcessMemory(
                 self.handle,
                 self.address as *const _,
@@ -242,8 +242,8 @@ impl MemoryPointer {
     }
 
     pub fn pattern_scan(&self, pattern: &[Option<u8>]) -> Result<Self, MemError> {
-        let mut buffer = vec![0u8; self.module_size as usize];
-        let res = unsafe {
+        let mut buffer: Vec<u8> = vec![0u8; self.module_size as usize];
+        let res: i32 = unsafe {
             ReadProcessMemory(
                 self.handle,
                 self.module_base as *const _,
@@ -257,7 +257,7 @@ impl MemoryPointer {
         }
 
         for i in 0..buffer.len() - pattern.len() {
-            let mut found = true;
+            let mut found: bool = true;
             for j in 0..pattern.len() {
                 if let Some(byte) = pattern[j] {
                     if buffer[i + j] != byte {
