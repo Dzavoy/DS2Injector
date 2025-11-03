@@ -12,26 +12,6 @@ use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
 use memchr::{memchr_iter, memmem};
 
-pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
-    Some(0x48),
-    Some(0x8B),
-    Some(0x05),
-    None,
-    None,
-    None,
-    None,
-    Some(0x48),
-    Some(0x8B),
-    Some(0x58),
-    Some(0x38),
-    Some(0x48),
-    Some(0x85),
-    Some(0xDB),
-    Some(0x74),
-    None,
-    Some(0xF6),
-];
-
 pub fn scan_bytes(hay: &[u8], pattern: &[Option<u8>]) -> Option<usize> {
     let plen: usize = pattern.len();
     if plen == 0 || hay.len() < plen {
