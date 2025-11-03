@@ -4,14 +4,36 @@ use std::ptr;
 
 use windows_sys::Win32::Foundation::HMODULE;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Memory::{PAGE_PROTECTION_FLAGS, PAGE_READWRITE, VirtualProtect};
+use windows_sys::Win32::System::Memory::{
+    PAGE_PROTECTION_FLAGS, PAGE_READWRITE, VirtualProtect,
+};
 use windows_sys::Win32::System::ProcessStatus::{GetModuleInformation, MODULEINFO};
 use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
 use memchr::{memchr_iter, memmem};
 
+pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
+    Some(0x48),
+    Some(0x8B),
+    Some(0x05),
+    None,
+    None,
+    None,
+    None,
+    Some(0x48),
+    Some(0x8B),
+    Some(0x58),
+    Some(0x38),
+    Some(0x48),
+    Some(0x85),
+    Some(0xDB),
+    Some(0x74),
+    None,
+    Some(0xF6),
+];
+
 pub fn scan_bytes(hay: &[u8], pattern: &[Option<u8>]) -> Option<usize> {
-    let plen = pattern.len();
+    let plen: usize = pattern.len();
     if plen == 0 || hay.len() < plen {
         return None;
     }
@@ -25,10 +47,7 @@ pub fn scan_bytes(hay: &[u8], pattern: &[Option<u8>]) -> Option<usize> {
         return memmem::find(hay, &pat_bytes);
     }
 
-    let fc_idx: usize = pattern
-        .iter()
-        .position(|p: &Option<u8>| p.is_some())
-        .unwrap();
+    let fc_idx: usize = pattern.iter().position(|p: &Option<u8>| p.is_some()).unwrap();
     let fc_byte: u8 = pattern[fc_idx].unwrap();
     let max_start: usize = hay.len() - plen;
     let search_end: usize = fc_idx + max_start + 1;
@@ -116,17 +135,13 @@ impl LocalPtr {
     pub fn offset(&self, off: isize) -> Option<LocalPtr> {
         if off >= 0 {
             let add: usize = off as usize;
-            self.address
-                .checked_add(add)
-                .map(|a: usize| LocalPtr { address: a })
+            self.address.checked_add(add).map(|a: usize| LocalPtr { address: a })
         } else {
             let sub: usize = (-off) as usize;
             if self.address < sub {
                 None
             } else {
-                Some(LocalPtr {
-                    address: self.address - sub,
-                })
+                Some(LocalPtr { address: self.address - sub })
             }
         }
     }
@@ -159,7 +174,16 @@ impl LocalPtr {
             let b: Vec<u8> = self.read_bytes(4)?;
             let ptr32: usize = u32::from_le_bytes(b.try_into().unwrap()) as usize;
             Some(LocalPtr { address: ptr32 })
-        }
+            }
+    }
+
+    pub fn deref(&self) -> Option<Self> {
+        self.dereference()
+    }
+
+    pub fn rip_relative(&self, offset_offset: isize, instruction_len: isize) -> Option<Self> {
+        let disp: isize = self.offset(offset_offset)?.read_i32_le()? as isize;
+        self.offset(instruction_len + disp)
     }
 
     pub fn write_f32(&self, v: f32) -> Option<()> {
@@ -172,7 +196,7 @@ impl LocalPtr {
             return Some(());
         }
         unsafe {
-            let dst = self.address as *mut u8;
+            let dst: *mut u8 = self.address as *mut u8;
             if dst.is_null() {
                 return None;
             }
@@ -187,9 +211,9 @@ impl LocalPtr {
         }
         unsafe {
             const PAGE_SIZE: usize = 0x1000;
-            let start_page = self.address & !(PAGE_SIZE - 1);
+            let start_page: usize = self.address & !(PAGE_SIZE - 1);
             let mut old: PAGE_PROTECTION_FLAGS = 0;
-            let ok = VirtualProtect(
+            let ok: i32 = VirtualProtect(
                 start_page as *mut c_void,
                 PAGE_SIZE,
                 PAGE_READWRITE,
@@ -211,5 +235,29 @@ impl LocalPtr {
 
     pub fn write_f32_protected(&self, v: f32) -> Option<()> {
         self.write_bytes_protected(&v.to_le_bytes())
+    }
+
+    pub fn chain(self) -> LocalPtrChain {
+        LocalPtrChain { current: self }
+    }
+}
+
+pub struct LocalPtrChain {
+    current: LocalPtr,
+}
+
+impl LocalPtrChain {
+    pub fn offset(mut self, off: isize) -> Option<Self> {
+        self.current = self.current.offset(off)?;
+        Some(self)
+    }
+
+    pub fn deref(mut self) -> Option<Self> {
+        self.current = self.current.dereference()?;
+        Some(self)
+    }
+
+    pub fn finish(self) -> LocalPtr {
+        self.current
     }
 }
