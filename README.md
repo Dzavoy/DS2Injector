@@ -2,7 +2,7 @@
 
 Memory Box is a small, focused Rust library for local memory manipulation intended to help the development of DLL mods and hooks.
 
-> **Status:** Experimental / Alpha — the crate is under development and may change. Recommended to use only in controlled environments.
+**Status:** Experimental / Alpha — the crate is under development and may change. Recommended to use only in controlled environments.
 
 ---
 
@@ -45,7 +45,7 @@ A small wrapper around a raw address in the current process (`usize`). Common he
 * `offset(&self, off: isize) -> Option<LocalPtr>` — add/subtract an offset safely (checked arithmetic).
 * `read_bytes(&self, len: usize) -> Option<Vec<u8>>` — read `len` bytes from the address.
 * `read_i32_le(&self) -> Option<i32>` — read a 32-bit little-endian integer.
-* `dereference()` / `deref()` — read a pointer-sized value from the address and return a `LocalPtr` to that pointer. Handles 32-bit and 64-bit targets.
+* `deref()` — read a pointer-sized value from the address and return a `LocalPtr` to that pointer. Handles 32-bit and 64-bit targets.
 * `rip_relative(&self, offset_offset: isize, instruction_len: isize) -> Option<Self>` — helper for resolving RIP-relative addressing (common in x86-64): it reads a 32-bit displacement at `self + offset_offset` and returns the absolute target `self + instruction_len + disp`.
 * `write_bytes(&self, data: &[u8]) -> Option<()>` — copy bytes into the address (unsafe raw memory write).
 * `write_bytes_protected(&self, data: &[u8]) -> Option<()>` — temporarily changes page protection to `PAGE_READWRITE` using `VirtualProtect`, performs the write, then restores the previous protection. Useful for overwriting code pages.
@@ -141,13 +141,6 @@ pub fn apply() -> Option<()> {
     Some(())
 }
 ```
-
-This example demonstrates:
-
-* Using wildcard patterns to match relative addresses inside code.
-* Resolving RIP-relative pointers and following multiple dereferences.
-* Applying protected writes to multiple offsets inside a structure.
-
 ---
 
 ## Platform notes
@@ -158,25 +151,6 @@ This example demonstrates:
 
 ---
 
-## Safety & warnings
-
-* These helpers make direct memory accesses and are inherently unsafe. Calling code should wrap operations in `unsafe` and run only in controlled environments.
-* Invalid reads/writes may crash the process or introduce undefined behaviour. Test in VMs or isolated processes.
-* Use the protected write helpers when patching executable pages to avoid access violations, but be careful restoring the original protection.
-
----
-
 ## Development & contributing
 
-If you want this crate to support remote processes, additional OSes, or more robust pattern engines (masks, AOB with `?` wildcards in a string form), feel free to open issues or PRs. Suggested improvements:
-
-* Add documentation comments for each public function and type.
-* Add unit tests that run in an isolated process, exercising safe read/write and pattern scanning.
-* Optionally expose higher-level typed read/write helpers (e.g. `read<T>`, `write<T>`) with `bytemuck` or `unsafe` conversions.
-
----
-
-
-## Contact
-
-Open an issue on the repository.
+If you want this crate to support remote processes, additional OSes, or more robust pattern engines (masks, AOB with `?` wildcards in a string form), feel free to open issues or PRs.
