@@ -115,6 +115,8 @@ pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
 ];
 
 pub fn apply() -> Option<()> {
+    use memory_box::mem_box::*;
+    
     let param_start: LocalPtr = ModuleContext::current()?
         .pattern_scan(&GAME_MANAGER_IMP)?
         .rip_relative(3, 7)?
