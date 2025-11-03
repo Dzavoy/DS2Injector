@@ -4,6 +4,7 @@ To include Memory Box in your Rust project, add the following line to your `Carg
 
 ```toml
 memory_box = { git = "https://github.com/Dzavoy/MemoryBox.git" }
+```
 
 # Memory Box
 
