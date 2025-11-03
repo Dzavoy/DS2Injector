@@ -108,6 +108,8 @@ match ok {
 The project uses a signature pattern to find the game manager, resolves a RIP-relative pointer, then follows a chain of offsets to reach a structure containing multiple buff floats. The `apply()` function zeroes those buff values by writing `f32` `0.0` with protected writes.
 
 ```rust
+use memory_box::mem_box::*;
+
 pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
     Some(0x48), Some(0x8B), Some(0x05), None, None, None, None,
     Some(0x48), Some(0x8B), Some(0x58), Some(0x38), Some(0x48),
@@ -115,8 +117,6 @@ pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
 ];
 
 pub fn apply() -> Option<()> {
-    use memory_box::mem_box::*;
-    
     let param_start: LocalPtr = ModuleContext::current()?
         .pattern_scan(&GAME_MANAGER_IMP)?
         .rip_relative(3, 7)?
