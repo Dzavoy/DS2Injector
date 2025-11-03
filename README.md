@@ -1,11 +1,3 @@
-## Installation
-
-To include Memory Box in your Rust project, add the following line to your `Cargo.toml`:
-
-```toml
-memory_box = { git = "https://github.com/Dzavoy/MemoryBox.git" }
-```
-
 # Memory Box
 
 Memory Box is a small, focused Rust library for local memory manipulation intended to help the development of DLL mods and hooks.
@@ -13,6 +5,14 @@ Memory Box is a small, focused Rust library for local memory manipulation intend
 > **Status:** Experimental / Alpha — the crate is under development and may change. Recommended to use only in controlled environments.
 
 ---
+
+## Installation
+
+To include Memory Box in your Rust project, add the following line to your `Cargo.toml`:
+
+```toml
+memory_box = { git = "https://github.com/Dzavoy/MemoryBox.git" }
+```
 
 ## Goals
 
