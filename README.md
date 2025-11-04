@@ -110,7 +110,7 @@ The project uses a signature pattern to find the game manager, resolves a RIP-re
 ```rust
 use memory_box::mem_box::*;
 
-pub const GAME_MANAGER_IMP: [Option<u8>; 17] = [
+const GAME_MANAGER_IMP: [Option<u8>; 17] = [
     Some(0x48), Some(0x8B), Some(0x05), None, None, None, None,
     Some(0x48), Some(0x8B), Some(0x58), Some(0x38), Some(0x48),
     Some(0x85), Some(0xDB), Some(0x74), None, Some(0xF6),
