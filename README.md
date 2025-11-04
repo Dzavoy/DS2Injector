@@ -31,6 +31,32 @@ Searches a byte slice (`hay`) for a pattern described by `pattern` where `Some(b
 * Returns the index in `hay` where the pattern starts, or `None` if not found.
 * Optimized to use fast searches when the pattern has no wildcards or is entirely wildcards.
 
+> **Implementation note:** the implementation uses a fast-search optimization that locates a defined byte inside the pattern (the first defined byte) and then checks the whole pattern starting at candidate positions. A common bug is to forget that `memchr_iter` returns indices relative to the search slice; the implementation must add the slice start offset to the `memchr_iter` result before validating the full pattern.
+
+Corrected core loop (implementation snippet):
+
+```rust
+for rel in memchr_iter(fc_byte, search_area) {
+    // rel is relative to `search_area` which begins at `fc_idx`
+    let base_idx = fc_idx + rel;
+    let mut ok = true;
+    for j in 0..plen {
+        match pattern[j] {
+            Some(b) => {
+                if hay[base_idx + j] != b {
+                    ok = false;
+                    break;
+                }
+            }
+            None => {}
+        }
+    }
+    if ok {
+        return Some(base_idx);
+    }
+}
+```
+
 ### `ModuleContext`
 
 Represents the current module (the process / DLL where the code runs):
@@ -60,6 +86,8 @@ A tiny fluent API for pointer chasing:
 * `deref(self) -> Option<Self>` — dereference.
 * `finish(self) -> LocalPtr` — get the resulting pointer.
 
+> **Usage note:** `LocalPtrChain::offset` and `deref` return `Option<LocalPtrChain>`. When using the fluent chain with `?` you must be inside a function (or closure) that returns `Option` (or `Result`) to use `?` directly. See examples below.
+
 ---
 
 ## Usage examples
@@ -80,14 +108,20 @@ if let Some(ctx) = ModuleContext::current() {
 
 ### Read a 32-bit value behind a pointer chain
 
+This example uses `?`, so it must be inside a function returning `Option<T>` (or a closure). The pattern below is the recommended idiom for linear chaining.
+
 ```rust
-if let Some(base) = ModuleContext::current().map(|c| LocalPtr { address: c.module_base + 0x1234 }) {
+fn read_chained_value(base: LocalPtr) -> Option<i32> {
     // follow: base + 0x10 -> deref -> +0x8 -> deref -> final address
-    if let Some(final_ptr) = base.chain().offset(0x10).deref().offset(0x8).deref().finish() {
-        if let Some(val) = final_ptr.read_i32_le() {
-            println!("value = {}", val);
-        }
-    }
+    let final_ptr = base
+        .chain()
+        .offset(0x10)?      // Option<LocalPtrChain>
+        .deref()?           // Option<LocalPtrChain>
+        .offset(0x8)?
+        .deref()?
+        .finish();          // LocalPtr
+
+    final_ptr.read_i32_le()
 }
 ```
 
@@ -103,17 +137,31 @@ match ok {
 }
 ```
 
-### Real example (from this repository)
+### Real example
 
 The project uses a signature pattern to find the game manager, resolves a RIP-relative pointer, then follows a chain of offsets to reach a structure containing multiple buff floats. The `apply()` function zeroes those buff values by writing `f32` `0.0` with protected writes.
 
 ```rust
-use memory_box::mem_box::*;
+use memory_box::{ModuleContext, LocalPtr};
 
 const GAME_MANAGER_IMP: [Option<u8>; 17] = [
-    Some(0x48), Some(0x8B), Some(0x05), None, None, None, None,
-    Some(0x48), Some(0x8B), Some(0x58), Some(0x38), Some(0x48),
-    Some(0x85), Some(0xDB), Some(0x74), None, Some(0xF6),
+    Some(0x48),
+    Some(0x8B),
+    Some(0x05),
+    None,
+    None,
+    None,
+    None,
+    Some(0x48),
+    Some(0x8B),
+    Some(0x58),
+    Some(0x38),
+    Some(0x48),
+    Some(0x85),
+    Some(0xDB),
+    Some(0x74),
+    None,
+    Some(0xF6)
 ];
 
 pub fn apply() -> Option<()> {
@@ -141,13 +189,20 @@ pub fn apply() -> Option<()> {
     Some(())
 }
 ```
+
 ---
 
 ## Platform notes
 
 * The current implementation is Windows-specific and uses `windows_sys` to query module information and change memory protections.
 * Pointer-size awareness: dereference reads 4 bytes on 32-bit targets and 8 bytes on 64-bit targets.
-* `write_bytes_protected` sets protection on a single 4KB page (the implementation derives `start_page` from the target address and uses a constant page size of `0x1000`).
+* `write_bytes_protected` sets protection on a single 4KB page (the implementation derives `start_page` from the target address and uses a constant page size of `0x1000`). **Large writes that cross page boundaries are not automatically handled — callers must ensure safety for multi-page writes.**
+
+---
+
+## Safety
+
+This crate performs `unsafe` operations internally (raw pointer reads/writes and calls to `VirtualProtect`). The public API returns `Option` to indicate failures, but callers must treat all memory writes and pointer chasing as potentially dangerous. Use only in controlled, trusted environments.
 
 ---
 
