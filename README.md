@@ -33,8 +33,6 @@ Searches a byte slice (`hay`) for a pattern described by `pattern` where `Some(b
 
 > **Implementation note:** the implementation uses a fast-search optimization that locates a defined byte inside the pattern (the first defined byte) and then checks the whole pattern starting at candidate positions. A common bug is to forget that `memchr_iter` returns indices relative to the search slice; the implementation must add the slice start offset to the `memchr_iter` result before validating the full pattern.
 
-Corrected core loop (implementation snippet):
-
 ```rust
 for rel in memchr_iter(fc_byte, search_area) {
     // rel is relative to `search_area` which begins at `fc_idx`
