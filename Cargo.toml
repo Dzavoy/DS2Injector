@@ -11,7 +11,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }
-memchr = "2.7.6"
+memchr = { version = "2.7.6", features = ["memmem"] }
 
 [lib]
 path = "src/lib.rs"
